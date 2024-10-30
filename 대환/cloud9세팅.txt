@@ -1,0 +1,10 @@
+//https://important-owner-fb5.notion.site/Canva-FaceSwapper-App-ff11c533f2964230a700a7184ddd8a85
+
+cd stable-diffusion-webui
+
+gpu 버전
+./webui.sh
+
+cpu 버전
+./webui.sh --precision full --no-half --skip-torch-cuda-test --lowvram --listen --enable-insecure-extension-access
+
