@@ -99,6 +99,7 @@ def lambda_handler(event, context):
         # Lambda 함수가 imgCutting 함수에서 호출되었을 때의 이벤트 데이터 처리
         bucket_name = event['bucket']
         object_key = event['image_key']  # imgCutting 함수에서 전달된 이미지 키 사용
+        request_id = event['request_id']
 
         response = s3.get_object(Bucket=bucket_name, Key=object_key)
         image_data = response['Body'].read()
@@ -138,7 +139,7 @@ def lambda_handler(event, context):
         image = Image.open(io.BytesIO(image_bytes))
 
         # 처리된 이미지를 S3에 저장
-        destination_key = 'path/to/target.png'  # 이미지 이름을 명확하게 target.png로 설정
+        destination_key = f'path/to/{request_id}/target.png'  # 이미지 이름을 명확하게 target.png로 설정
         upload_image_to_s3(image, bucket_name, destination_key)
 
         print(f"Image successfully processed and uploaded to {destination_key}")
