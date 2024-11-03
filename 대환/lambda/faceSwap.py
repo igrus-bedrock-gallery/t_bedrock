@@ -5,7 +5,7 @@ import base64
 
 def send_face_swap_request(source_image_base64, target_image_base64):
     # EC2 URL 입력
-    url = "http://13.114.183.223:7860/reactor/image"
+    url = "http://18.181.247.202:7860/reactor/image"
 
     # 이미지 데이터를 Base64로 인코딩하여 JSON으로 전송
     data = {
@@ -53,8 +53,10 @@ def send_face_swap_request(source_image_base64, target_image_base64):
 def lambda_handler(event, context):
     # 이벤트에서 S3 버킷 이름과 파일 경로 가져오기
     s3_bucket = event['bucket']
-    source_image_key = event['source_image_key']
-    target_image_key = event['target_image_key']
+    request_id = event['request_id']
+
+    source_image_key = f"path/to/{request_id}/source_image.png"
+    target_image_key = f"path/to/{request_id}/target.png"
     
     print(f"Using source image key: {source_image_key}")
 
@@ -81,7 +83,7 @@ def lambda_handler(event, context):
         swapped_image_bytes = base64.b64decode(swapped_image_base64)
     
         # S3에 스왑된 이미지 저장
-        swapped_image_key = "path/to/swapped_image.png"
+        swapped_image_key = f"path/to/{request_id}/swapped_image.png"
         s3_client.put_object(Bucket=s3_bucket, Key=swapped_image_key, Body=swapped_image_bytes)
     
         print(f"Swapped image saved to S3 at {swapped_image_key}")
