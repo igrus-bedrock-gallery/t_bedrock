@@ -6,6 +6,7 @@ import os
 
 s3_client = boto3.client('s3')
 lambda_client = boto3.client('lambda')
+dynamodb_client = boto3.client('dynamodb')
 
 def lambda_handler(event, context):
     try:
@@ -24,20 +25,30 @@ def lambda_handler(event, context):
                 'body': json.dumps(f"File {key} is not an .out file. Skipping processing.")
             }
         
-        # input/ 폴더의 JSON 파일 목록 가져오기
-        response = s3_client.list_objects_v2(Bucket=bucket, Prefix='input/')
-        json_files = [item['Key'] for item in response.get('Contents', []) if item['Key'].endswith('.json')]
-        print(f"Found JSON files: {json_files}")
+        # 출력 UUID 추출
+        output_uuid = key.split('/')[-1].replace('.out', '')
+
+        # DynamoDB에서 RequestID 조회
+        response = dynamodb_client.get_item(
+            TableName='RequestMappingTable',
+            Key={
+                'OutputUUID': {'S': output_uuid}
+            }
+        )
+
+        if 'Item' not in response:
+            print("No matching RequestID found for OutputUUID:", output_uuid)
+            return
         
-        if not json_files:
-            raise FileNotFoundError("No JSON file found in input/ folder.")
+        request_id = response['Item']['RequestID']['S']
+        print(f"Extracted request_id: {request_id}")
         
-        # input/ 폴더에 JSON 파일이 하나만 있다고 가정하고 해당 파일 가져오기
-        json_key = json_files[0]
-        print(f"Using JSON file: {json_key}")
-        
+        # 추출한 request_id를 사용하여 입력 JSON 파일의 키 유추
+        input_json_key = f'input/{request_id}.json'
+        print(f"Derived input JSON key: {input_json_key}")
+
         # JSON 파일 내용 읽기
-        response = s3_client.get_object(Bucket=bucket, Key=json_key)
+        response = s3_client.get_object(Bucket=bucket, Key=input_json_key)
         input_data = json.loads(response['Body'].read().decode('utf-8'))
         print(f"Read input data: {input_data}")
         
@@ -66,7 +77,7 @@ def lambda_handler(event, context):
         print("Applied mask to original image")
         
         # 최종 이미지 S3에 저장
-        output_key = f'path/to/{os.path.basename(original_image_key)}'
+        output_key = f'path/to/{request_id}/source_image.png'
         result_image.save('/tmp/result_image.png')
         s3_client.upload_file('/tmp/result_image.png', bucket, output_key)
         print(f"Final image saved to {output_key}")
@@ -74,7 +85,8 @@ def lambda_handler(event, context):
         # imgMake Lambda 함수 호출
         img_make_payload = {
             "bucket": bucket,
-            "image_key": original_image_key  # imgMake 함수에 필요한 데이터를 전달
+            "image_key": original_image_key,  # imgMake 함수에 필요한 데이터를 전달
+            "request_id": request_id
         }
 
         img_make_response = lambda_client.invoke(
@@ -91,9 +103,8 @@ def lambda_handler(event, context):
         if img_make_response_payload.get('statusCode') == 200:
             # faceSwap Lambda 함수 호출
             face_swap_payload = {
-                "source_image_key": output_key,  # 원본 이미지 이름을 source_image_key로 사용
-                "target_image_key": "path/to/target.png",  # 대상 이미지 경로와 이름
-                "bucket": bucket
+                "bucket": bucket,
+                "request_id": request_id
             }
 
             face_swap_response = lambda_client.invoke(
@@ -109,8 +120,8 @@ def lambda_handler(event, context):
             print("imgMake Lambda function failed, skipping faceSwap Lambda invocation.")
         
         # input 폴더의 JSON 파일 삭제
-        s3_client.delete_object(Bucket=bucket, Key=json_key)
-        print(f"Deleted input JSON file: {json_key}")
+        s3_client.delete_object(Bucket=bucket, Key=input_json_key)
+        print(f"Deleted input JSON file: {input_json_key}")
         
         # /succ 폴더 내 .out 파일 삭제하기
         s3_client.delete_object(Bucket=bucket, Key=key)
