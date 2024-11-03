@@ -1,5 +1,7 @@
 import json
 import boto3
+import uuid
+from datetime import datetime
 
 # AWS 클라이언트 생성
 sagemaker_runtime_client = boto3.client('sagemaker-runtime')
@@ -8,6 +10,11 @@ rekognition_client = boto3.client('rekognition')
 
 def lambda_handler(event, context):
     try:
+        microseconds = int(datetime.now().strftime("%f"))
+        milliseconds = microseconds // 1000
+        current_time_ms_str = datetime.now().strftime("%Y%m%d%H%M%S") + "{:03d}".format(milliseconds)
+        request_id = f"{current_time_ms_str}-{uuid.uuid4()}"
+        
         # S3 이벤트에서 버킷 이름과 파일 키 가져오기
         bucket = event['Records'][0]['s3']['bucket']['name']
         key = event['Records'][0]['s3']['object']['key']
@@ -39,6 +46,7 @@ def lambda_handler(event, context):
             
             # SageMaker 엔드포인트 호출
             test_input = {
+                'request_id': request_id,
                 'bucket': bucket,
                 'key': key,
                 'bounding_box': {
@@ -50,7 +58,7 @@ def lambda_handler(event, context):
             }
             
             # 입력 데이터를 S3에 JSON 형식으로 저장 (비동기 추론을 위해 필요)
-            input_key = f'input/{key.split("/")[-1].split(".")[0]}.json'
+            input_key = f'input/{request_id}.json'
             input_location = f's3://{bucket}/{input_key}'
             s3_client.put_object(
                 Bucket=bucket,
